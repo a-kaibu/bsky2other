@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -67,6 +68,60 @@ func TestFetchFeedParsesBskyFeedShape(t *testing.T) {
 	}
 	if posts[3].Quote.URI != "at://did:plc:def/app.bsky.feed.post/quote-post" {
 		t.Fatalf("posts[3].Quote.URI = %q", posts[3].Quote.URI)
+	}
+}
+
+func TestPostFromViewRemovesBskyLinkFacetText(t *testing.T) {
+	text := "日本語の本文とリンク表示を含むテスト投稿です。\nexample.com/news/12..."
+	linkText := "example.com/news/12..."
+	linkStart := strings.Index(text, linkText)
+	if linkStart < 0 {
+		t.Fatal("link text not found")
+	}
+
+	var view bskyPostView
+	view.URI = "at://did:plc:abc/app.bsky.feed.post/post-with-link"
+	view.Record.Text = text
+	view.Record.Facets = []bskyFacet{
+		{
+			Index: bskyFacetIndex{ByteStart: linkStart, ByteEnd: linkStart + len(linkText)},
+			Features: []bskyFacetFeature{
+				{
+					Type: "app.bsky.richtext.facet#link",
+					URI:  "https://example.com/news/12345.html",
+				},
+			},
+		},
+	}
+
+	got := postFromView(view)
+
+	if got.Text != "日本語の本文とリンク表示を含むテスト投稿です。" {
+		t.Fatalf("Text = %q", got.Text)
+	}
+	assertLinks(t, got.Links, []string{"https://example.com/news/12345.html"})
+}
+
+func TestSanitizePostTextRemovesMultipleLinkFacetRanges(t *testing.T) {
+	got := sanitizePostText("before example.com middle example.net after", []bskyFacet{
+		{
+			Index: bskyFacetIndex{ByteStart: 7, ByteEnd: 18},
+			Features: []bskyFacetFeature{{
+				Type: "app.bsky.richtext.facet#link",
+				URI:  "https://example.com",
+			}},
+		},
+		{
+			Index: bskyFacetIndex{ByteStart: 26, ByteEnd: 37},
+			Features: []bskyFacetFeature{{
+				Type: "app.bsky.richtext.facet#link",
+				URI:  "https://example.net",
+			}},
+		},
+	})
+	want := "before  middle  after"
+	if got != want {
+		t.Fatalf("sanitizePostText() = %q, want %q", got, want)
 	}
 }
 
