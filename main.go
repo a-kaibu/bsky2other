@@ -26,9 +26,18 @@ type config struct {
 }
 
 type bskyFeedResponse struct {
-	Feed []struct {
-		Post bskyPostView `json:"post"`
-	} `json:"feed"`
+	Feed []bskyFeedItem `json:"feed"`
+}
+
+type bskyFeedItem struct {
+	Post   bskyPostView `json:"post"`
+	Reason *bskyReason  `json:"reason"`
+}
+
+type feedSnapshot struct {
+	LatestURI string
+	Posts     []post
+	NewPosts  []post
 }
 
 type bskyPostView struct {
@@ -41,15 +50,36 @@ type bskyPostView struct {
 				URI  string `json:"uri"`
 			} `json:"features"`
 		} `json:"facets"`
+		Reply *bskyReplyRef `json:"reply"`
 	} `json:"record"`
 	Embed bskyEmbed `json:"embed"`
 }
 
+type bskyReason struct {
+	Type string `json:"$type"`
+}
+
+type bskyReplyRef struct {
+	Root   bskyStrongRef `json:"root"`
+	Parent bskyStrongRef `json:"parent"`
+}
+
+type bskyStrongRef struct {
+	URI string `json:"uri"`
+	CID string `json:"cid"`
+}
+
 type bskyEmbed struct {
-	Type     string        `json:"$type"`
-	Images   []bskyImage   `json:"images"`
-	External *bskyExternal `json:"external"`
-	Media    *bskyEmbed    `json:"media"`
+	Type     string           `json:"$type"`
+	Images   []bskyImage      `json:"images"`
+	External *bskyExternal    `json:"external"`
+	Media    *bskyEmbed       `json:"media"`
+	Record   *bskyEmbedRecord `json:"record"`
+}
+
+type bskyEmbedRecord struct {
+	URI    string           `json:"uri"`
+	Record *bskyEmbedRecord `json:"record"`
 }
 
 type bskyImage struct {
@@ -67,9 +97,20 @@ type bskyExternal struct {
 type post struct {
 	URI      string      `json:"uri"`
 	Text     string      `json:"text"`
+	Reply    *reply      `json:"reply,omitempty"`
+	Quote    *quote      `json:"quote,omitempty"`
 	Links    []link      `json:"links,omitempty"`
 	Images   []postImage `json:"images,omitempty"`
 	External *external   `json:"external,omitempty"`
+}
+
+type reply struct {
+	RootURI   string `json:"root_uri"`
+	ParentURI string `json:"parent_uri"`
+}
+
+type quote struct {
+	URI string `json:"uri"`
 }
 
 type link struct {
@@ -114,20 +155,20 @@ func run(ctx context.Context) error {
 	}
 
 	if prev.LatestPostURI == "" {
-		posts, err := fetchFeed(ctx, cfg.FeedURL)
+		snapshot, err := fetchFeedSnapshot(ctx, cfg.FeedURL, "")
 		if err != nil {
 			return err
 		}
-		if err := writePosts(cfg.PostsFile, posts); err != nil {
+		if err := writePosts(cfg.PostsFile, snapshot.Posts); err != nil {
 			return err
 		}
-		if len(posts) == 0 {
+		if snapshot.LatestURI == "" {
 			fmt.Println("no posts found")
 			return nil
 		}
 
 		latest := state{
-			LatestPostURI: posts[0].URI,
+			LatestPostURI: snapshot.LatestURI,
 			UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
 		}
 		if err := writeState(cfg.StateFile, latest); err != nil {
@@ -138,30 +179,36 @@ func run(ctx context.Context) error {
 		return nil
 	}
 
-	posts, err := fetchFeed(ctx, cfg.FeedURL)
+	snapshot, err := fetchFeedSnapshot(ctx, cfg.FeedURL, prev.LatestPostURI)
 	if err != nil {
 		return err
 	}
-	if err := writePosts(cfg.PostsFile, posts); err != nil {
+	if err := writePosts(cfg.PostsFile, snapshot.Posts); err != nil {
 		return err
 	}
-	if len(posts) == 0 {
+	if snapshot.LatestURI == "" {
 		fmt.Println("no posts found")
 		return nil
 	}
 
 	latest := state{
-		LatestPostURI: posts[0].URI,
+		LatestPostURI: snapshot.LatestURI,
 		UpdatedAt:     time.Now().UTC().Format(time.RFC3339),
 	}
 
-	newPosts := newPostsSince(posts, prev.LatestPostURI)
+	newPosts := snapshot.NewPosts
 
 	for i := len(newPosts) - 1; i >= 0; i-- {
 		fmt.Printf("new post: %s\n", newPosts[i].URI)
 	}
 
 	if len(newPosts) == 0 {
+		if latest.LatestPostURI != prev.LatestPostURI {
+			if err := writeState(cfg.StateFile, latest); err != nil {
+				return err
+			}
+			fmt.Printf("saved latest post uri %q to %s\n", latest.LatestPostURI, cfg.StateFile)
+		}
 		fmt.Println("no new posts")
 		return nil
 	}
@@ -207,45 +254,80 @@ func loadConfig() (config, error) {
 }
 
 func fetchFeed(ctx context.Context, feedURL string) ([]post, error) {
+	snapshot, err := fetchFeedSnapshot(ctx, feedURL, "")
+	if err != nil {
+		return nil, err
+	}
+
+	return snapshot.Posts, nil
+}
+
+func fetchFeedSnapshot(ctx context.Context, feedURL, previousURI string) (feedSnapshot, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, feedURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+		return feedSnapshot{}, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "bsky2other/0.1")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch feed: %w", err)
+		return feedSnapshot{}, fmt.Errorf("fetch feed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("fetch feed: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return feedSnapshot{}, fmt.Errorf("fetch feed: status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
 	var feed bskyFeedResponse
 	if err := json.NewDecoder(resp.Body).Decode(&feed); err != nil {
-		return nil, fmt.Errorf("decode feed response: %w", err)
+		return feedSnapshot{}, fmt.Errorf("decode feed response: %w", err)
 	}
 
+	snapshot := feedSnapshot{}
 	posts := make([]post, 0, len(feed.Feed))
 	for _, item := range feed.Feed {
+		if snapshot.LatestURI == "" {
+			snapshot.LatestURI = item.Post.URI
+		}
+		if isRepost(item.Reason) {
+			if item.Post.URI == previousURI {
+				break
+			}
+			continue
+		}
 		if item.Post.URI == "" {
 			continue
+		}
+		if item.Post.URI == previousURI {
+			break
 		}
 
 		posts = append(posts, postFromView(item.Post))
 	}
+	snapshot.Posts = posts
+	snapshot.NewPosts = posts
 
-	return posts, nil
+	return snapshot, nil
+}
+
+func isRepost(reason *bskyReason) bool {
+	return reason != nil && reason.Type == "app.bsky.feed.defs#reasonRepost"
 }
 
 func postFromView(view bskyPostView) post {
 	p := post{
 		URI:  view.URI,
 		Text: view.Record.Text,
+	}
+
+	if view.Record.Reply != nil {
+		p.Reply = &reply{
+			RootURI:   view.Record.Reply.Root.URI,
+			ParentURI: view.Record.Reply.Parent.URI,
+		}
 	}
 
 	for _, facet := range view.Record.Facets {
@@ -280,9 +362,26 @@ func collectEmbed(embed bskyEmbed, p *post) {
 		}
 	}
 
+	if p.Quote == nil {
+		if uri := quoteURI(embed.Record); uri != "" {
+			p.Quote = &quote{URI: uri}
+		}
+	}
+
 	if embed.Media != nil {
 		collectEmbed(*embed.Media, p)
 	}
+}
+
+func quoteURI(record *bskyEmbedRecord) string {
+	if record == nil {
+		return ""
+	}
+	if record.URI != "" {
+		return record.URI
+	}
+
+	return quoteURI(record.Record)
 }
 
 func appendUniqueLink(links []link, value link) []link {

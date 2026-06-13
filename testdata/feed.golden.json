@@ -58,12 +58,36 @@
     },
     {
       "post": {
-        "uri": "at://did:plc:abc/app.bsky.feed.post/post-002"
+        "uri": "at://did:plc:abc/app.bsky.feed.post/post-002",
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "text": "reply with quote",
+          "reply": {
+            "root": {
+              "uri": "at://did:plc:abc/app.bsky.feed.post/root-post",
+              "cid": "cid-root"
+            },
+            "parent": {
+              "uri": "at://did:plc:abc/app.bsky.feed.post/parent-post",
+              "cid": "cid-parent"
+            }
+          }
+        },
+        "embed": {
+          "$type": "app.bsky.embed.record#view",
+          "record": {
+            "$type": "app.bsky.embed.record#viewRecord",
+            "uri": "at://did:plc:def/app.bsky.feed.post/quote-post"
+          }
+        }
       }
     },
     {
       "post": {
         "uri": "at://did:plc:abc/app.bsky.feed.post/post-001"
+      },
+      "reason": {
+        "$type": "app.bsky.feed.defs#reasonRepost"
       }
     }
   ]

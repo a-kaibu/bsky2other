@@ -31,7 +31,6 @@ func TestFetchFeedParsesBskyFeedShape(t *testing.T) {
 		"at://did:plc:abc/app.bsky.feed.post/post-004",
 		"at://did:plc:abc/app.bsky.feed.post/post-003",
 		"at://did:plc:abc/app.bsky.feed.post/post-002",
-		"at://did:plc:abc/app.bsky.feed.post/post-001",
 	}
 	assertPostURIs(t, posts, want)
 
@@ -52,6 +51,90 @@ func TestFetchFeedParsesBskyFeedShape(t *testing.T) {
 	}
 	if posts[1].External.Title != "Example Card" {
 		t.Fatalf("posts[1].External.Title = %q", posts[1].External.Title)
+	}
+
+	if posts[3].Reply == nil {
+		t.Fatal("posts[3].Reply is nil")
+	}
+	if posts[3].Reply.RootURI != "at://did:plc:abc/app.bsky.feed.post/root-post" {
+		t.Fatalf("posts[3].Reply.RootURI = %q", posts[3].Reply.RootURI)
+	}
+	if posts[3].Reply.ParentURI != "at://did:plc:abc/app.bsky.feed.post/parent-post" {
+		t.Fatalf("posts[3].Reply.ParentURI = %q", posts[3].Reply.ParentURI)
+	}
+	if posts[3].Quote == nil {
+		t.Fatal("posts[3].Quote is nil")
+	}
+	if posts[3].Quote.URI != "at://did:plc:def/app.bsky.feed.post/quote-post" {
+		t.Fatalf("posts[3].Quote.URI = %q", posts[3].Quote.URI)
+	}
+}
+
+func TestFetchFeedSnapshotTracksRawLatestURIAndSkipsReposts(t *testing.T) {
+	fixture, err := os.ReadFile("testdata/feed.golden.json")
+	if err != nil {
+		t.Fatalf("read golden fixture: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(fixture)
+	}))
+	defer server.Close()
+
+	snapshot, err := fetchFeedSnapshot(context.Background(), server.URL, "at://did:plc:abc/app.bsky.feed.post/post-003")
+	if err != nil {
+		t.Fatalf("fetchFeedSnapshot() error = %v", err)
+	}
+
+	if snapshot.LatestURI != "at://did:plc:abc/app.bsky.feed.post/post-005" {
+		t.Fatalf("LatestURI = %q", snapshot.LatestURI)
+	}
+
+	want := []string{
+		"at://did:plc:abc/app.bsky.feed.post/post-005",
+		"at://did:plc:abc/app.bsky.feed.post/post-004",
+	}
+	assertPostURIs(t, snapshot.NewPosts, want)
+}
+
+func TestFetchFeedSnapshotStopsAtPreviousRepostURI(t *testing.T) {
+	fixture := []byte(`{
+  "feed": [
+    {
+      "post": {
+        "uri": "at://did:plc:abc/app.bsky.feed.post/repost-001"
+      },
+      "reason": {
+        "$type": "app.bsky.feed.defs#reasonRepost"
+      }
+    },
+    {
+      "post": {
+        "uri": "at://did:plc:abc/app.bsky.feed.post/post-001"
+      }
+    }
+  ]
+}`)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(fixture)
+	}))
+	defer server.Close()
+
+	snapshot, err := fetchFeedSnapshot(context.Background(), server.URL, "at://did:plc:abc/app.bsky.feed.post/repost-001")
+	if err != nil {
+		t.Fatalf("fetchFeedSnapshot() error = %v", err)
+	}
+
+	if snapshot.LatestURI != "at://did:plc:abc/app.bsky.feed.post/repost-001" {
+		t.Fatalf("LatestURI = %q", snapshot.LatestURI)
+	}
+	if len(snapshot.NewPosts) != 0 {
+		t.Fatalf("len(NewPosts) = %d, want 0", len(snapshot.NewPosts))
 	}
 }
 
