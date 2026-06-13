@@ -1,0 +1,75 @@
+name: Fetch Bluesky Feed
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 * * * *'
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v6
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Restore state from Pages
+        run: |
+          set -e
+
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          repo="${GITHUB_REPOSITORY#*/}"
+          repo="${repo,,}"
+
+          if [ "$repo" = "$owner.github.io" ]; then
+            pages_url="https://${owner}.github.io"
+          else
+            pages_url="https://${owner}.github.io/${repo}"
+          fi
+          state_url="${pages_url}/state.json"
+
+          if curl -fsSL "$state_url" -o state.json.tmp; then
+            mv state.json.tmp state.json
+            echo "Restored state from $state_url"
+          else
+            rm -f state.json.tmp
+            echo "No previous state found at $state_url"
+          fi
+
+      - name: Fetch latest post
+        env:
+          BSKY_FEED_URL: ${{ secrets.BSKY_FEED_URL || vars.BSKY_FEED_URL }}
+        run: go run .
+
+      - name: Prepare Pages artifact
+        run: |
+          set -e
+
+          mkdir -p public
+          [ -f state.json ] && cp state.json public/state.json
+          [ -f posts.json ] && cp posts.json public/posts.json
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

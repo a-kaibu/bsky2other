@@ -1,0 +1,70 @@
+{
+  "feed": [
+    {
+      "post": {
+        "uri": "at://did:plc:abc/app.bsky.feed.post/post-005",
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "text": "new post with link and images",
+          "facets": [
+            {
+              "features": [
+                {
+                  "$type": "app.bsky.richtext.facet#link",
+                  "uri": "https://example.com/link"
+                }
+              ]
+            }
+          ]
+        },
+        "embed": {
+          "$type": "app.bsky.embed.images#view",
+          "images": [
+            {
+              "thumb": "https://cdn.example.com/image-001-thumb.jpg",
+              "fullsize": "https://cdn.example.com/image-001-full.jpg",
+              "alt": "image one"
+            },
+            {
+              "thumb": "https://cdn.example.com/image-002-thumb.jpg",
+              "fullsize": "https://cdn.example.com/image-002-full.jpg",
+              "alt": "image two"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "post": {
+        "uri": "at://did:plc:abc/app.bsky.feed.post/post-004",
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "text": "post with external card"
+        },
+        "embed": {
+          "$type": "app.bsky.embed.external#view",
+          "external": {
+            "uri": "https://example.com/card",
+            "title": "Example Card",
+            "description": "External card description."
+          }
+        }
+      }
+    },
+    {
+      "post": {
+        "uri": "at://did:plc:abc/app.bsky.feed.post/post-003"
+      }
+    },
+    {
+      "post": {
+        "uri": "at://did:plc:abc/app.bsky.feed.post/post-002"
+      }
+    },
+    {
+      "post": {
+        "uri": "at://did:plc:abc/app.bsky.feed.post/post-001"
+      }
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+.env
+state.json
+posts.json
+
+# Go build artifacts
+/bsky2other
+*.exe
+*.test
+*.out
+
+# Test and coverage output
+coverage/
+coverage.out
+
+# Local workspace files
+bin/
+tmp/
