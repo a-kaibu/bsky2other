@@ -152,6 +152,14 @@ func TestFetchFeedSnapshotTracksRawLatestURIAndSkipsReposts(t *testing.T) {
 		"at://did:plc:abc/app.bsky.feed.post/post-004",
 	}
 	assertPostURIs(t, snapshot.NewPosts, want)
+
+	wantPosts := []string{
+		"at://did:plc:abc/app.bsky.feed.post/post-005",
+		"at://did:plc:abc/app.bsky.feed.post/post-004",
+		"at://did:plc:abc/app.bsky.feed.post/post-003",
+		"at://did:plc:abc/app.bsky.feed.post/post-002",
+	}
+	assertPostURIs(t, snapshot.Posts, wantPosts)
 }
 
 func TestFetchFeedSnapshotStopsAtPreviousRepostURI(t *testing.T) {
@@ -191,6 +199,7 @@ func TestFetchFeedSnapshotStopsAtPreviousRepostURI(t *testing.T) {
 	if len(snapshot.NewPosts) != 0 {
 		t.Fatalf("len(NewPosts) = %d, want 0", len(snapshot.NewPosts))
 	}
+	assertPostURIs(t, snapshot.Posts, []string{"at://did:plc:abc/app.bsky.feed.post/post-001"})
 }
 
 func TestNewPostsSinceReturnsFourPostsFromActualBskyOrder(t *testing.T) {

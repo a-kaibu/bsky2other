@@ -299,27 +299,30 @@ func fetchFeedSnapshot(ctx context.Context, feedURL, previousURI string) (feedSn
 
 	snapshot := feedSnapshot{}
 	posts := make([]post, 0, len(feed.Feed))
+	newPosts := make([]post, 0, len(feed.Feed))
+	collectNewPosts := previousURI != ""
 	for _, item := range feed.Feed {
 		if snapshot.LatestURI == "" {
 			snapshot.LatestURI = item.Post.URI
 		}
+		if item.Post.URI == previousURI {
+			collectNewPosts = false
+		}
 		if isRepost(item.Reason) {
-			if item.Post.URI == previousURI {
-				break
-			}
 			continue
 		}
 		if item.Post.URI == "" {
 			continue
 		}
-		if item.Post.URI == previousURI {
-			break
-		}
 
-		posts = append(posts, postFromView(item.Post))
+		post := postFromView(item.Post)
+		posts = append(posts, post)
+		if previousURI == "" || collectNewPosts {
+			newPosts = append(newPosts, post)
+		}
 	}
 	snapshot.Posts = posts
-	snapshot.NewPosts = posts
+	snapshot.NewPosts = newPosts
 
 	return snapshot, nil
 }
