@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"time"
 )
@@ -43,16 +44,26 @@ type feedSnapshot struct {
 type bskyPostView struct {
 	URI    string `json:"uri"`
 	Record struct {
-		Text   string `json:"text"`
-		Facets []struct {
-			Features []struct {
-				Type string `json:"$type"`
-				URI  string `json:"uri"`
-			} `json:"features"`
-		} `json:"facets"`
-		Reply *bskyReplyRef `json:"reply"`
+		Text   string        `json:"text"`
+		Facets []bskyFacet   `json:"facets"`
+		Reply  *bskyReplyRef `json:"reply"`
 	} `json:"record"`
 	Embed bskyEmbed `json:"embed"`
+}
+
+type bskyFacet struct {
+	Index    bskyFacetIndex     `json:"index"`
+	Features []bskyFacetFeature `json:"features"`
+}
+
+type bskyFacetIndex struct {
+	ByteStart int `json:"byteStart"`
+	ByteEnd   int `json:"byteEnd"`
+}
+
+type bskyFacetFeature struct {
+	Type string `json:"$type"`
+	URI  string `json:"uri"`
 }
 
 type bskyReason struct {
@@ -320,7 +331,7 @@ func isRepost(reason *bskyReason) bool {
 func postFromView(view bskyPostView) post {
 	p := post{
 		URI:  view.URI,
-		Text: view.Record.Text,
+		Text: sanitizePostText(view.Record.Text, view.Record.Facets),
 	}
 
 	if view.Record.Reply != nil {
@@ -341,6 +352,36 @@ func postFromView(view bskyPostView) post {
 	collectEmbed(view.Embed, &p)
 
 	return p
+}
+
+func sanitizePostText(text string, facets []bskyFacet) string {
+	type byteRange struct {
+		start int
+		end   int
+	}
+
+	var ranges []byteRange
+	for _, facet := range facets {
+		if facet.Index.ByteStart < 0 || facet.Index.ByteEnd > len(text) || facet.Index.ByteStart >= facet.Index.ByteEnd {
+			continue
+		}
+		for _, feature := range facet.Features {
+			if feature.Type == "app.bsky.richtext.facet#link" && feature.URI != "" {
+				ranges = append(ranges, byteRange{start: facet.Index.ByteStart, end: facet.Index.ByteEnd})
+				break
+			}
+		}
+	}
+
+	sort.Slice(ranges, func(i, j int) bool {
+		return ranges[i].start > ranges[j].start
+	})
+
+	for _, r := range ranges {
+		text = text[:r.start] + text[r.end:]
+	}
+
+	return strings.TrimSpace(text)
 }
 
 func collectEmbed(embed bskyEmbed, p *post) {
