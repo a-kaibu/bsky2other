@@ -55,6 +55,9 @@ jobs:
       - name: Fetch latest post
         env:
           BSKY_FEED_URL: ${{ secrets.BSKY_FEED_URL || vars.BSKY_FEED_URL }}
+          MM_URL: ${{ secrets.MM_URL || vars.MM_URL }}
+          MM_TOKEN: ${{ secrets.MM_TOKEN }}
+          MM_CID: ${{ secrets.MM_CID || vars.MM_CID }}
         run: go run .
 
       - name: Prepare Pages artifact

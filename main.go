@@ -224,6 +224,18 @@ func run(ctx context.Context) error {
 		return nil
 	}
 
+	// Post before saving state so a failed post is retried on the next run.
+	mm, mmEnabled, err := loadMattermostConfig(os.Getenv)
+	if err != nil {
+		return err
+	}
+	if mmEnabled {
+		if err := postToMattermost(ctx, mm, newPosts); err != nil {
+			return err
+		}
+		fmt.Printf("posted %d post(s) to Mattermost\n", len(newPosts))
+	}
+
 	if err := writeState(cfg.StateFile, latest); err != nil {
 		return err
 	}
