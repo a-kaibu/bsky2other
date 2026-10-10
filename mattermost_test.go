@@ -77,7 +77,7 @@ func TestFormatMattermostMessage(t *testing.T) {
 		External: &external{URI: "https://example.com"},
 		Images:   []postImage{{URL: "https://img/1.jpg", Alt: "a [b]"}},
 	})
-	want := "hello\n\nhttps://example.com\n\n![a b](https://img/1.jpg)\n\nhttps://bsky.app/profile/did:plc:abc/post/3k"
+	want := "hello\n\nhttps://example.com\n\n![a b](https://img/1.jpg)"
 	if got != want {
 		t.Fatalf("got %q\nwant %q", got, want)
 	}

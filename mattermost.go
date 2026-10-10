@@ -108,9 +108,6 @@ func formatMattermostMessage(p post) string {
 	for _, img := range p.Images {
 		parts = append(parts, fmt.Sprintf("![%s](%s)", strings.NewReplacer("[", "", "]", "").Replace(img.Alt), img.URL))
 	}
-	if u := bskyWebURL(p.URI); u != "" {
-		parts = append(parts, u)
-	}
 
 	return strings.Join(parts, "\n\n")
 }
